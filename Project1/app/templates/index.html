@@ -1,0 +1,143 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        #map { height: 400px; }
+        #pointList { margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="pointList">
+        <label for="pointSelector">Chọn điểm: </label>
+        <select id="pointSelector">
+            <!-- Options sẽ được thêm vào đây từ JS -->
+        </select>
+        <button onclick="addWaypoint()">Chọn điểm cần đi qua</button>
+        <button onclick="calculateShortestPath()">Tính đường đi</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        let map;
+        let blueLayer;
+        let pointList = [];
+
+        // Gọi hàm initMap khi DOM đã được load xong
+        document.addEventListener("DOMContentLoaded", function() {
+            initMap();
+        });
+
+        function initMap() {
+            map = L.map('map').setView([21.0083927, 105.8430643], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            blueLayer = L.layerGroup().addTo(map);
+            const polygonPoints = [
+                [21.0047, 105.8581],
+                [21.0047, 105.8836],
+                [20.9899, 105.8836],
+                [20.9899, 105.8581],
+            ];
+            L.polygon(polygonPoints, { color: 'blue', weight: 2, fill: false }).addTo(blueLayer);
+
+            // Thêm sự kiện click chuột cho bản đồ
+            map.on('click', onMapClick);
+        }
+
+        function addWaypoint() {
+            const selectedPoint = document.getElementById('pointSelector').value.split(',');
+            const lat = parseFloat(selectedPoint[0]);
+            const lng = parseFloat(selectedPoint[1]);
+            addPointToMap(lat, lng);
+        }
+
+        function addPointToMap(lat, lng) {
+            const latlng = [lat, lng];
+            L.marker(latlng).addTo(blueLayer);
+            addPointToList(lat, lng);
+        }
+
+        function addPointToList(lat, lng) {
+            const option = document.createElement('option');
+            option.value = `${lat},${lng}`;
+            option.text = `(${lat}, ${lng})`;
+            document.getElementById('pointSelector').appendChild(option);
+            pointList.push([lat, lng]);
+        }
+
+
+        function calculateShortestPath() {
+            if (pointList.length < 2) {
+                alert('Vui lòng chọn ít nhất hai điểm');
+                return;
+            }
+
+            const startCoords = pointList[0];
+            const endCoords = pointList[1];
+
+            // Tiếp tục với phần còn lại của hàm tính toán đường đi
+            fetch('/calculate_shortest_path', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    coordinates:pointList
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Xóa các layer Polyline và Marker hiện tại
+                //blueLayer.clearLayers();
+
+                const path = data.path.map(coord => [coord.lat, coord.lon]);
+                console.log(path);
+                // Vẽ đường đi tối ưu
+                const optimalPath = L.polyline(path, { color: 'green' }).addTo(blueLayer);
+
+                // Hiển thị chú thích về thứ tự đi qua các điểm
+                path.forEach((point, index) => {
+                    L.marker(point, { icon: L.divIcon({ className: 'custom-div-icon', html: `<div>${index + 1}</div>` }) }).addTo(blueLayer);
+                });
+
+                // Tạo nút Reset để chọn các điểm mới mà không xóa phần border
+                const resetButton = document.createElement('button');
+                resetButton.innerHTML = 'Reset';
+                resetButton.onclick = function () {
+                    // Xóa đường đi tối ưu và Marker
+                    blueLayer.removeLayer(optimalPath);
+                    blueLayer.eachLayer(layer => {
+                        if (layer instanceof L.Marker) {
+                            blueLayer.removeLayer(layer);
+                        }
+                    });
+                };
+                document.getElementById('pointList').appendChild(resetButton);
+            });
+
+            // Clear danh sách điểm để chuẩn bị cho lần tính toán tiếp theo
+            clearMapAndList();
+        }
+
+        function clearMapAndList() {
+            blueLayer.clearLayers();
+            document.getElementById('pointSelector').innerHTML = '';
+            pointList = [];
+        }
+
+        // Hàm xử lý sự kiện click chuột trên bản đồ
+        function onMapClick(e) {
+            const lat = e.latlng.lat;
+            const lng = e.latlng.lng;
+            addPointToMap(lat, lng);
+        }
+    </script>
+</body>
+</html>
